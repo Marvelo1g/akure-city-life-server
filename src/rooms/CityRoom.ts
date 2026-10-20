@@ -21,6 +21,10 @@ const MAX_SPEED = 70;
 // This covers phones that go to sleep or tabs that move to the background mid-walk.
 const IDLE_AFTER_MS = 1000;
 
+// The longest chat message allowed, and the shortest wait between two messages from one player.
+const MAX_CHAT_LENGTH = 120;
+const CHAT_COOLDOWN_MS = 700;
+
 // The four directions a character can face. Anything else is rejected.
 const FACINGS = ["left", "down", "up", "right"];
 
@@ -49,6 +53,9 @@ export class CityRoom extends Room<{ state: CityState }> {
   // When we last heard from each player, in milliseconds. Kept private on the server
   // (not in the shared state) because other players do not need it.
   private lastMoveAt = new Map<string, number>();
+
+  // When each player last sent a chat message, used to stop spamming.
+  private lastChatAt = new Map<string, number>();
 
   // Messages the server understands. The name on the left is the message type.
   messages = {
@@ -99,6 +106,31 @@ export class CityRoom extends Room<{ state: CityState }> {
       player.moving = message.moving === true;
       this.lastMoveAt.set(client.sessionId, now);
     },
+
+    // A player says something. We check it, then pass it on to everyone in the room.
+    chat: (client: Client, message: { text?: unknown }) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player) return;
+
+      // Only text is allowed.
+      if (typeof message?.text !== "string") return;
+
+      // Remove hidden control characters, trim spaces, and cut it to the length limit.
+      const text = message.text
+        .replace(/[\u0000-\u001f\u007f]/g, "")
+        .trim()
+        .slice(0, MAX_CHAT_LENGTH);
+      if (text.length === 0) return;
+
+      // Ignore messages that come too fast after the last one.
+      const now = Date.now();
+      const last = this.lastChatAt.get(client.sessionId) ?? 0;
+      if (now - last < CHAT_COOLDOWN_MS) return;
+      this.lastChatAt.set(client.sessionId, now);
+
+      // Send it to everyone, using the name the server holds, not one the phone claims.
+      this.broadcast("chat", { id: client.sessionId, name: player.name, text });
+    },
   };
 
   // Runs once when the room is created.
@@ -135,6 +167,7 @@ export class CityRoom extends Room<{ state: CityState }> {
     // Remove them from the list so they disappear for everyone else.
     this.state.players.delete(client.sessionId);
     this.lastMoveAt.delete(client.sessionId);
+    this.lastChatAt.delete(client.sessionId);
     console.log(`${client.sessionId} left (code ${code}). Players: ${this.state.players.size}`);
   }
 
