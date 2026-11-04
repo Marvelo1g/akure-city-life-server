@@ -5,11 +5,14 @@ import { defineServer, defineRoom, monitor, playground } from "colyseus";
 
 // Our Akure city room.
 import { CityRoom } from "./rooms/CityRoom.js";
+// The 3D version of the city.
+import { City3DRoom } from "./rooms/City3DRoom.js";
 
 const server = defineServer({
-  // The rooms players can join. "city" is the name the game will ask for.
+  // The rooms players can join. "city" is the 2D game, "city3d" is the 3D game.
   rooms: {
     city: defineRoom(CityRoom),
+    city3d: defineRoom(City3DRoom),
   },
 
   // Extra web pages the server offers.
